@@ -1,11 +1,16 @@
 // java -cp "sac-1.0.3;." App
-import sac.graph.GraphState;
+import sac.graph.*;
+
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Arrays;
-class Sudoku {
-    private int[][] board;
-    private int n;
+import java.util.List;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+class Sudoku extends sac.graph.GraphStateImpl {
+    protected int[][] board;
+    protected int n;
     public Sudoku(int n) {
         board = new int[n*n][n*n];
         this.n = n;
@@ -50,7 +55,7 @@ class Sudoku {
                 index++;
             }
             this.board[index][i % (this.n * this.n)] = value.charAt(i) - '0';
-            System.out.println("[" + index + "][" + i % (this.n * this.n) + "] =" +  (value.charAt(i) - '0'));
+            //System.out.println("[" + index + "][" + i % (this.n * this.n) + "] =" +  (value.charAt(i) - '0'));
         }
     }
     public boolean isValidSudoku() {
@@ -112,19 +117,148 @@ class Sudoku {
         }
         return count;
     }
+    @Override
+    public int hashCode() {
+        return toString().hashCode();
+    }
+    @Override
+    public List<GraphState> generateChildren() {
+        List<GraphState> children = new ArrayList<>();
+        for (int i = 0; i < this.board.length; i++) {
+            for (int j = 0; j < this.board[i].length; j++) {    
+                if (this.board[i][j] == 0) {
+                    HashSet<Integer> availableNumbers = new HashSet<>();
+                    for(int i_ = 1; i_ <= n*n; i_++) {
+                        availableNumbers.add(i_);
+                    }
+                    for(int x = 0; x < n*n; x++) {
+                        availableNumbers.remove(this.board[x][j]);
+                        availableNumbers.remove(this.board[i][x]);
+                    }
+
+                    int I = (i/n)*n;
+                    int J = j-j%n;
+                    for(int k = 0; k < n; k++) {
+                        for(int kk = 0; kk < n; kk++) {
+                            availableNumbers.remove(this.board[I+k][J+kk]);
+                        }
+                    }
+                    for(Integer k : availableNumbers) {
+                        Sudoku newSudoku = new Sudoku(this);
+                        newSudoku.board[i][j] = k;
+                        children.add(newSudoku);
+                    }
+                    return children;
+                }
+            }
+        }
+        return children;
+        
+    }
+    
+    @Override
+    public boolean isSolution() {
+        return (countUnknowns() == 0);
+    }
 
 }
-class App {
-    public static void main(String[] args) throws Exception {
-        Sudoku sudoku = new Sudoku(3);
-        System.out.println(sudoku.toString());
-        sudoku.fromString("200419500001005090800200000048060900000000608000000000000008060020040003003006450");
-        System.out.println(sudoku.toString());
-        if (sudoku.isValidSudoku()) {
-            System.out.println("Sudoku is correctly filled. [OK]");
-        } else {
-            System.out.println("Sudoku isn't correctly filled. [NOK]");
-        }
-        System.out.println("Unknown tiles: " + sudoku.countUnknowns());
+class SudokuNew extends Sudoku {
+    
+    public SudokuNew(int n) {
+        super(n);
     }
+    public SudokuNew(Sudoku sudoku) {
+        super(sudoku);
+    }
+    public HashSet<Integer> getAvailableNumbers(int i, int j) {
+        HashSet<Integer> availableNumbers = new HashSet<>();
+        for(int i_ = 1; i_ <= n*n; i_++) {
+            availableNumbers.add(i_);
+        }
+        for(int x = 0; x < n*n; x++) {
+            availableNumbers.remove(this.board[x][j]);
+            availableNumbers.remove(this.board[i][x]);
+        }
+
+        int I = (i/n)*n;
+        int J = j-j%n;
+        for(int k = 0; k < n; k++) {
+            for(int kk = 0; kk < n; kk++) {
+                availableNumbers.remove(this.board[I+k][J+kk]);
+            }
+        }
+        return availableNumbers;
+    }
+    @Override
+    public List<GraphState> generateChildren() {
+        List<GraphState> children = new ArrayList<>();
+        int[] availableNumberInfo = new int[3];
+        //x and y from board with minimum of children
+        availableNumberInfo[0] = 0;
+        availableNumberInfo[1] = 0;
+        //minimum children numbers
+        availableNumberInfo[2] = Integer.MAX_VALUE;
+        HashSet<Integer> minimumPossibilities = new HashSet<>();
+        for (int i = 0; i < this.board.length; i++) {
+            for (int j = 0; j < this.board[i].length; j++) {    
+                if (this.board[i][j] == 0) {
+                    HashSet<Integer> availableNumbers = getAvailableNumbers(i, j);
+                    //availablenumbers - ilosc rozwiazan
+                    if(availableNumbers.size() < availableNumberInfo[2]){
+                        availableNumberInfo[0] = i;
+                        availableNumberInfo[1] = j;
+                        availableNumberInfo[2] = availableNumbers.size();
+                        minimumPossibilities = availableNumbers;
+                    }
+                    if(availableNumbers.size() == 1) {
+                        for(Integer k : availableNumbers) {
+                            Sudoku newSudoku = new Sudoku(this);
+                            newSudoku.board[i][j] = k;
+                            children.add(newSudoku);
+                            return children;
+                        }
+                    }
+                }
+            }
+        }
+        for(Integer k : minimumPossibilities) {
+            Sudoku newSudoku = new Sudoku(this);
+            newSudoku.board[availableNumberInfo[0]][availableNumberInfo[1]] = k;
+            children.add(newSudoku);
+        }
+        return children;   
+    }
+}
+class App {
+    /**
+     * @param args
+     * @throws Exception
+     */
+    public static void main(String[] args) throws Exception {
+        try (BufferedReader br = new BufferedReader(new FileReader("sudokus.txt"))) {
+            String line;
+            int totalOldSudoku = 0;
+            int totalNewSudoku = 0;
+            while ((line = br.readLine()) != null) {
+                    long startTime = System.currentTimeMillis();
+                    Sudoku sudoku = new Sudoku(3);
+                    sudoku.fromString(line);
+                    BreadthFirstSearch bfs_old = new BreadthFirstSearch(sudoku);
+                    bfs_old.execute();
+                    totalOldSudoku += System.currentTimeMillis() - startTime;
+                    startTime = System.currentTimeMillis();
+                    SudokuNew sudoku_new = new SudokuNew(3);
+                    sudoku_new.fromString(line);
+                    BreadthFirstSearch bfs_new = new BreadthFirstSearch(sudoku_new);
+                    bfs_new.execute();
+                    totalNewSudoku += System.currentTimeMillis() - startTime;
+                    System.out.println("Comparing: " + bfs_old.getSolutions().size() + ", " + bfs_new.getSolutions().size());
+            }
+            System.out.println("Times: " + totalOldSudoku + "ms, " + totalNewSudoku + "ms");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        
+    }
+     
 }
